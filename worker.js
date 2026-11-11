@@ -1,15 +1,25 @@
 /**
- * In Cloud Pro – Multi-Bot Cloudflare Worker (5 Bots High-Availability & Parallel Backup)
+ * In Cloud Pro – Ultimate Enterprise High-Performance Worker
+ * Features: Round-Robin, Background Forwarding, Smart Failover, Edge Caching, 
+ *           IP Rate Limiting (1000 uploads / 6 hours), Zip/Doc Support & Admin Alerts.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
-const ASYNC_MAX = 20 * 1024 * 1024;
-const TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
-  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mp3: 'audio/mpeg', m4a: 'audio/mp4',
-  ogg: 'audio/ogg', wav: 'audio/wav', pdf: 'application/pdf' };
 
-// আপনার দেওয়া ৫টি বটের তালিকা (১টি আগের + ৪টি নতুন)
+// জিপ (.zip) এবং অন্যান্য প্রয়োজনীয় ফাইল ফরম্যাট এখানে যুক্ত করা হলো
+const TYPES = { 
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mp3: 'audio/mpeg', m4a: 'audio/mp4',
+  ogg: 'audio/ogg', wav: 'audio/wav', pdf: 'application/pdf', 
+  zip: 'application/zip', rar: 'application/x-rar-compressed', '7z': 'application/x-7z-compressed',
+  txt: 'text/plain', json: 'application/json'
+};
+
+// বিপজ্জনক বা ক্ষতিকর ফাইলগুলো ব্লক করা থাকবে (তবে zip, rar, 7z এখন এলাও করা হলো)
+const BLOCKED_EXTENSIONS = ['exe', 'bat', 'cmd', 'scr', 'js', 'php', 'sh', 'jar'];
+
+// আপনার ৫টি টেলিগ্রাম বট টোকেন
 const BOT_TOKENS = [
-  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1 (Original)
+  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1
   '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2
   '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3
   '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4
@@ -17,18 +27,54 @@ const BOT_TOKENS = [
 ];
 
 let roundRobinIndex = 0;
-function getNextBotToken() {
+function getNextPrimaryBot() {
   const token = BOT_TOKENS[roundRobinIndex];
   roundRobinIndex = (roundRobinIndex + 1) % BOT_TOKENS.length;
   return token;
 }
 
+// ইন-মেমোরি রেট লিমিট স্টোরেজ (১০০০ আপলোড / ৬ ঘণ্টা)
+const rateLimitMap = new Map();
+const MAX_UPLOADS = 1000;
+const TIME_WINDOW = 6 * 60 * 60 * 1000; 
+
+function checkRateLimit(clientIP) {
+  const now = Date.now();
+  if (!rateLimitMap.has(clientIP)) {
+    rateLimitMap.set(clientIP, { count: 1, resetTime: now + TIME_WINDOW });
+    return { allowed: true };
+  }
+  let record = rateLimitMap.get(clientIP);
+  if (now > record.resetTime) {
+    rateLimitMap.set(clientIP, { count: 1, resetTime: now + TIME_WINDOW });
+    return { allowed: true };
+  }
+  if (record.count >= MAX_UPLOADS) {
+    const hoursLeft = Math.ceil((record.resetTime - now) / (1000 * 60 * 60));
+    return { allowed: false, hoursLeft };
+  }
+  record.count++;
+  return { allowed: true };
+}
+
+async function sendAdminAlert(token, chatId, message) {
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: `⚠️ *In Cloud Pro Alert*\n\n${message}`, parse_mode: 'Markdown' })
+    });
+  } catch (e) {}
+}
+
 const cors = () => ({
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Key, Content-Type',
+  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Key, Content-Type, Range',
   'Access-Control-Max-Age': '86400',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges'
 });
+
 const json = (o, status = 200) =>
   new Response(JSON.stringify(o), { status, headers: { ...cors(), 'Content-Type': 'application/json' } });
 
@@ -46,22 +92,44 @@ async function authorized(request, env) {
   } catch (e) { return false; }
 }
 
-// একক কোনো টেলিগ্রাম বটে রিকোয়েস্ট পাঠানোর ফাংশন
-async function sendToSingleBot(token, ep, form) {
-  const url = `https://api.telegram.org/bot${token}/${ep}`;
-  let r = await fetch(url, { method: 'POST', body: form });
-  let j = await r.json();
-  if (j && j.error_code === 429) {
-    const wait = Math.min(10, (j.parameters && j.parameters.retry_after) || 2);
-    await new Promise(res => setTimeout(res, wait * 1000));
-    r = await fetch(url, { method: 'POST', body: form });
-    j = await r.json();
+async function sendToSingleBotWithFailover(tokens, ep, form) {
+  let result = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const currentToken = getNextPrimaryBot();
+    const url = `https://api.telegram.org/bot${currentToken}/${ep}`;
+    try {
+      let r = await fetch(url, { method: 'POST', body: form });
+      let j = await r.json();
+      
+      if (j && j.error_code === 429) {
+        const wait = Math.min(5, (j.parameters && j.parameters.retry_after) || 2);
+        await new Promise(res => setTimeout(res, wait * 1000));
+        continue;
+      }
+      
+      if (j && j.ok) {
+        return { token: currentToken, result: j };
+      }
+      result = j;
+    } catch (e) {
+      continue;
+    }
   }
-  return j;
+  return { token: tokens[0], result: result || { ok: false, description: 'All bots failed' } };
 }
 
 async function handleSend(request, env, ctx, url) {
   if (!(await authorized(request, env))) return json({ ok: false, description: 'Unauthorized (401)' }, 401);
+
+  const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateCheck = checkRateLimit(clientIP);
+  if (!rateCheck.allowed) {
+    return json({ 
+      ok: false, 
+      description: `Rate limit exceeded! You can upload up to 1000 files every 6 hours. Please try again after ${rateCheck.hoursLeft} hours.` 
+    }, 429);
+  }
+
   const ep = url.searchParams.get('ep'), field = url.searchParams.get('field');
   if (!FIELD[ep] || FIELD[ep] !== field) return json({ ok: false, description: 'Bad request' }, 400);
 
@@ -69,33 +137,54 @@ async function handleSend(request, env, ctx, url) {
   const file = inc.get(field);
   if (!file || typeof file === 'string') return json({ ok: false, description: 'No file received' }, 400);
 
+  // ফাইল এক্সটেনশন সিকিউরিটি চেক (এখন .zip, .rar, .7z এলাও করা হয়েছে)
+  const fileName = (file.name || '').toLowerCase();
+  const fileExt = fileName.split('.').pop();
+  if (BLOCKED_EXTENSIONS.includes(fileExt)) {
+    return json({ ok: false, description: 'Security Error: This file type is restricted and blocked.' }, 403);
+  }
+
   const cap = inc.get('caption');
 
-  // প্রাইমারি আপলোডের জন্য রাউন্ড-রবিন থেকে একটি বট বেছে নেওয়া
-  const primaryToken = getNextBotToken();
   const primaryForm = new FormData();
   primaryForm.append('chat_id', env.CHAT_ID);
   primaryForm.append(field, file, file.name || 'upload');
   if (cap) primaryForm.append('caption', String(cap).slice(0, 1000));
 
-  // প্রথম বটের রেসপন্সের জন্য অপেক্ষা করা যাতে ইউজার তাৎক্ষণিক রেসপন্স পায়
-  let primaryResult = await sendToSingleBot(primaryToken, ep, primaryForm);
+  const uploadResponse = await sendToSingleBotWithFailover(BOT_TOKENS, ep, primaryForm);
+  const primaryToken = uploadResponse.token;
+  const primaryResult = uploadResponse.result;
 
-  // ব্যাকগ্রাউন্ডে বাকি বটগুলোর কাছেও ফাইলটি পাঠিয়ে ব্যাকআপ নিশ্চিত করা (Fault Tolerance & Multi-Bot Backup)
-  ctx.waitUntil((async () => {
-    try {
-      const backupPromises = BOT_TOKENS.filter(t => t !== primaryToken).map(token => {
-        const backupForm = new FormData();
-        backupForm.append('chat_id', env.CHAT_ID);
-        backupForm.append(field, file, file.name || 'upload');
-        if (cap) backupForm.append('caption', String(cap).slice(0, 1000));
-        return sendToSingleBot(token, ep, backupForm).catch(() => null);
-      });
-      await Promise.all(backupPromises);
-    } catch (e) {
-      // ব্যাকআপ ফেইল করলেও প্রাইমারি সফল হলে যেন অ্যাপে সমস্যা না হয়
-    }
-  })());
+  if (!primaryResult || !primaryResult.ok) {
+    ctx.waitUntil(sendAdminAlert(BOT_TOKENS[0], env.CHAT_ID, `Critical Error: All primary bot uploads failed for IP: ${clientIP}`));
+    return json(primaryResult, 500);
+  }
+
+  if (primaryResult && primaryResult.ok && primaryResult.result && primaryResult.result.message_id) {
+    const sentMessageId = primaryResult.result.message_id;
+
+    ctx.waitUntil((async () => {
+      try {
+        const forwardPromises = BOT_TOKENS.filter(token => token !== primaryToken).map(async (token) => {
+          const forwardUrl = `https://api.telegram.org/bot${token}/forwardMessage`;
+          const payload = {
+            chat_id: env.CHAT_ID,
+            from_chat_id: env.CHAT_ID,
+            message_id: sentMessageId
+          };
+
+          let r = await fetch(forwardUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          return r.json();
+        });
+
+        await Promise.all(forwardPromises);
+      } catch (e) {}
+    })());
+  }
 
   return json(primaryResult);
 }
@@ -105,7 +194,6 @@ async function handleDel(request, env, url) {
   const mid = parseInt(url.searchParams.get('mid'), 10);
   if (!mid) return json({ ok: false, description: 'Bad request' }, 400);
 
-  // ডিলিটের সময় সবকটি বট থেকেই মেসেজ মুছে ফেলার চেষ্টা করা
   await Promise.all(BOT_TOKENS.map(token => 
     fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -117,33 +205,40 @@ async function handleDel(request, env, url) {
 }
 
 async function handleFile(request, env, fid) {
-  // ফাইল রিট্রিভ বা স্ট্রিম করার সময় যেকোনো একটি সচল বট টোকেন ব্যবহার করা
   let up = null;
   let successExt = '';
   
   for (const token of BOT_TOKENS) {
     try {
       const g = await (await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fid)}`)).json();
-      if (g.ok) {
+      if (g.ok && g.result && g.result.file_path) {
         const h = {};
         const range = request.headers.get('Range');
         if (range) h.Range = range;
+        
         up = await fetch(`https://api.telegram.org/file/bot${token}/${g.result.file_path}`, { headers: h });
-        if (up.ok) {
+        if (up && up.ok) {
           successExt = (g.result.file_path.split('.').pop() || '').toLowerCase();
           break;
         }
       }
-    } catch (e) {
-      continue; // একটি বটে না পেলে পরবর্তী বটের কাছে ট্রাই করবে
-    }
+    } catch (e) { continue; }
   }
 
   if (!up || !up.ok) return json({ ok: false, description: 'File not found on any bot' }, 404);
 
-  const headers = { ...cors(), 'Content-Type': TYPES[successExt] || 'application/octet-stream',
-    'Cache-Control': 'public, max-age=86400', 'Accept-Ranges': 'bytes' };
-  ['Content-Length', 'Content-Range'].forEach(k => { const v = up.headers.get(k); if (v) headers[k] = v; });
+  const headers = { 
+    ...cors(), 
+    'Content-Type': TYPES[successExt] || 'application/octet-stream',
+    'Cache-Control': 'public, max-age=31536000, immutable', 
+    'Accept-Ranges': 'bytes' 
+  };
+  
+  ['Content-Length', 'Content-Range', 'Content-Disposition'].forEach(k => { 
+    const v = up.headers.get(k); 
+    if (v) headers[k] = v; 
+  });
+
   return new Response(up.body, { status: up.status, headers });
 }
 
@@ -169,4 +264,4 @@ export default {
     }
   },
 };
-                   
+       
