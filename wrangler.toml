@@ -1,16 +1,7 @@
-name = "incloud-pro-worker"
+name = "workerjs"
 main = "worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-11-11"
 
-# KV Namespaces configuration (Optional - required for short share links /s/<id>)
-# [[kv_namespaces]]
-# binding = "SHARES"
-# id = "YOUR_KV_NAMESPACE_ID"
-
-# Environment Variables (Non-sensitive)
 [vars]
-FIREBASE_PROJECT_ID = "tournament-app-add70"
-ALLOWED_ORIGINS = "*"
-SHARE_TTL_DAYS = "30"
-
-# Note: Add BOT_TOKEN and CHAT_ID as Secrets in Cloudflare Workers Settings.
+CHAT_ID = "6915123052"
+FIREBASE_API_KEY = "AIzaSyC6o__xNIM61kBrP7jfzMy8hKCeQc7Iv2E"
