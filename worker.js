@@ -1,26 +1,8 @@
 /**
  * In Cloud Pro – Cloudflare Worker
- *
- * Routes
- *   POST /send?field=photo&ep=sendPhoto[&async=1]   upload to Telegram
- *   GET  /job?id=...                                result of a background upload
- *   POST /del?mid=...                               delete a Telegram message
- *   GET  /f/<file_id>                               stream a file back from Telegram
- *
- * Settings (Worker > Settings > Variables and Secrets)
- *   BOT_TOKEN         secret  Telegram bot token
- *   CHAT_ID           text    (optional) defaults to 6915123052
- *   ADMIN_KEY         secret  key typed into the admin panel
- *   FIREBASE_API_KEY  text    (optional) defaults to your firebaseConfig apiKey
- *   JOBS              KV namespace binding (needed only for background uploads)
- *
- * Background upload: with &async=1 the Worker buffers the file, answers {queued:true,job}
- * immediately, then ctx.waitUntil() sends it to Telegram. The app collects the reply
- * from /job. Without the JOBS binding (or without async=1) it works the old way and
- * waits for Telegram, so the admin panel and every other caller keep working.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
-const ASYNC_MAX = 20 * 1024 * 1024; // bigger files are sent while the request waits (waitUntil has a ~30 s limit)
+const ASYNC_MAX = 20 * 1024 * 1024;
 const TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
   mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mp3: 'audio/mpeg', m4a: 'audio/mp4',
   ogg: 'audio/ogg', wav: 'audio/wav', pdf: 'application/pdf' };
@@ -52,7 +34,7 @@ async function toTelegram(env, ep, form) {
   const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/${ep}`;
   let r = await fetch(url, { method: 'POST', body: form });
   let j = await r.json();
-  if (j && j.error_code === 429) { // rate limited: wait once and retry
+  if (j && j.error_code === 429) {
     const wait = Math.min(10, (j.parameters && j.parameters.retry_after) || 2);
     await new Promise(res => setTimeout(res, wait * 1000));
     r = await fetch(url, { method: 'POST', body: form });
@@ -76,35 +58,7 @@ async function handleSend(request, env, ctx, url) {
   const cap = inc.get('caption');
   if (cap) out.append('caption', String(cap).slice(0, 1000));
 
-  const background = url.searchParams.get('async') === '1' && env.JOBS && file.size <= ASYNC_MAX;
-  if (!background) return json(await toTelegram(env, ep, out)); // old behaviour: wait for Telegram
-
-  const id = crypto.randomUUID() + crypto.randomUUID().slice(0, 8);
-  ctx.waitUntil((async () => {
-    let res;
-    try { res = await toTelegram(env, ep, out); }
-    catch (e) { res = { ok: false, description: 'Telegram upload failed: ' + (e && e.message || e) }; }
-    await env.JOBS.put('job:' + id, JSON.stringify(res), { expirationTtl: 300 });
-  })());
-  return json({ ok: true, queued: true, job: id }); // instant answer, Telegram keeps working in the background
-}
-
-async function handleJob(env, url) {
-  const id = url.searchParams.get('id') || '';
-  if (!env.JOBS || !/^[0-9a-f-]{20,60}$/.test(id)) return json({ state: 'pending' });
-  const v = await env.JOBS.get('job:' + id);
-  return v ? json({ state: 'done', res: JSON.parse(v) }) : json({ state: 'pending' });
-}
-
-async function handleDel(request, env, url) {
-  if (!(await authorized(request, env))) return json({ ok: false, description: 'Unauthorized (401)' }, 401);
-  const mid = parseInt(url.searchParams.get('mid'), 10);
-  if (!mid) return json({ ok: false, description: 'Bad request' }, 400);
-  const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/deleteMessage`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: env.CHAT_ID, message_id: mid }),
-  });
-  return json(await r.json());
+  return json(await toTelegram(env, ep, out));
 }
 
 async function handleFile(request, env, fid) {
@@ -124,13 +78,18 @@ async function handleFile(request, env, fid) {
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors() });
-    // built-in defaults, so only BOT_TOKEN and ADMIN_KEY must be set as secrets
-    env = { ...env, CHAT_ID: env.CHAT_ID || '6915123052', FIREBASE_API_KEY: env.FIREBASE_API_KEY || 'AIzaSyC6o__xNIM61kBrP7jfzMy8hKCeQc7Iv2E' };
+    
+    // আপনার দেওয়া টোকেন ও আইডি এখানে সরাসরি কনফিগার করা আছে
+    env = { 
+      ...env, 
+      BOT_TOKEN: env.BOT_TOKEN || '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0',
+      CHAT_ID: env.CHAT_ID || '6915123052', 
+      FIREBASE_API_KEY: env.FIREBASE_API_KEY || 'AIzaSyC6o__xNIM61kBrP7jfzMy8hKCeQc7Iv2E' 
+    };
+
     const url = new URL(request.url);
     try {
       if (url.pathname === '/send' && request.method === 'POST') return await handleSend(request, env, ctx, url);
-      if (url.pathname === '/job' && request.method === 'GET') return await handleJob(env, url);
-      if (url.pathname === '/del' && request.method === 'POST') return await handleDel(request, env, url);
       if (url.pathname.startsWith('/f/') && request.method === 'GET')
         return await handleFile(request, env, decodeURIComponent(url.pathname.slice(3)));
       return json({ ok: false, description: 'Not found' }, 404);
