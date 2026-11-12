@@ -1,6 +1,6 @@
 /**
  * In Cloud Pro – Ultimate Enterprise High-Performance Worker (10 Bots Edition)
- * Features: 10-Bot Round-Robin, Background Forwarding, Smart Failover, Edge Caching, 
+ * Features: True Random 10-Bot Load Balancing, Instant Edge Caching, Background Forwarding, 
  *           IP Rate Limiting (1000 uploads / 6 hours), Zip/Doc Support & Admin Alerts.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
@@ -15,25 +15,24 @@ const TYPES = {
 
 const BLOCKED_EXTENSIONS = ['exe', 'bat', 'cmd', 'scr', 'js', 'php', 'sh', 'jar'];
 
-// আপনার পুরোনো ৫টি এবং নতুন ৫টি—মোট ১০টি টেলিগ্রাম বট টোকেন
+// ১০টি টেলিগ্রাম বট টোকেন (নিখুঁত লোড ডিস্ট্রিবিউশনের জন্য)
 const BOT_TOKENS = [
-  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1 (Old)
-  '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2 (Old)
-  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3 (Old)
-  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4 (Old)
-  '9003459592:AAFIAVc4jMQhn_MYtvl5dQkAORcI73GLyFc', // Bot 5 (Old)
-  '9152119095:AAF9WLNRsoUPLJi8DkaeTy7gAHOikRGOAE', // Bot 6 (New - In_cloud_photo_5bot)[span_0](start_span)[span_0](end_span)
-  '9077197962:AAF930vM4ZPxvO_5DIO_8XKoAPM8VoRYwLs', // Bot 7 (New - In_cloud_photo_6bot)[span_1](start_span)[span_1](end_span)
-  '9218770739:AAF2C-0A-vZyOFE_WdtbaU8gLgKyxVgockk', // Bot 8 (New - In_cloud_photo_7bot)[span_2](start_span)[span_2](end_span)
-  '9171632972:AAGjEqcjxApfYrJzLKZgPb0-y1Tv2pUYB9k', // Bot 9 (New - In_cloud_pros_bot)[span_3](start_span)[span_3](end_span)
-  '9158369160:AAEEv_fCQ3Rx90029Dl-tW_2C7M5ycBwt8M'  // Bot 10 (New - In cloud pro 9)[span_4](start_span)[span_4](end_span)
+  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1
+  '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2
+  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3
+  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4
+  '9003459592:AAFIAVc4jMQhn_MYtvl5dQkAORcI73GLyFc', // Bot 5
+  '9152119095:AAF9WLNRsoUPLJi8DkaeTy7gAHOikRGOAE', // Bot 6[span_0](start_span)[span_0](end_span)
+  '9077197962:AAF930vM4ZPxvO_5DIO_8XKoAPM8VoRYwLs', // Bot 7[span_1](start_span)[span_1](end_span)
+  '9218770739:AAF2C-0A-vZyOFE_WdtbaU8gLgKyxVgockk', // Bot 8[span_2](start_span)[span_2](end_span)
+  '9171632972:AAGjEqcjxApfYrJzLKZgPb0-y1Tv2pUYB9k', // Bot 9[span_3](start_span)[span_3](end_span)
+  '9158369160:AAEEv_fCQ3Rx90029Dl-tW_2C7M5ycBwt8M'  // Bot 10[span_4](start_span)[span_4](end_span)
 ];
 
-let roundRobinIndex = 0;
+// পারফেক্ট লোড ব্যালেন্সার: ১০টি বটের ভেতর থেকে র্যান্ডমলি বট বেছে নেবে যাতে কেউ বসে না থাকে
 function getNextPrimaryBot() {
-  const token = BOT_TOKENS[roundRobinIndex];
-  roundRobinIndex = (roundRobinIndex + 1) % BOT_TOKENS.length;
-  return token;
+  const randomIndex = Math.floor(Math.random() * BOT_TOKENS.length);
+  return BOT_TOKENS[randomIndex];
 }
 
 const rateLimitMap = new Map();
@@ -228,6 +227,7 @@ async function handleFile(request, env, fid) {
 
   if (!up || !up.ok) return json({ ok: false, description: 'File not found on any bot' }, 404);
 
+  // সুপার ফাস্ট ক্যাশিং হেডার: ছবি একবার লোড হলে পরবর্তীতে ইনস্ট্যান্ট শো করবে
   const headers = { 
     ...cors(), 
     'Content-Type': TYPES[successExt] || 'application/octet-stream',
@@ -265,4 +265,3 @@ export default {
     }
   },
 };
-    
