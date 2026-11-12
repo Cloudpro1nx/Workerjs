@@ -1,11 +1,10 @@
 /**
- * In Cloud Pro – Ultimate Enterprise High-Performance Worker
- * Features: Round-Robin, Background Forwarding, Smart Failover, Edge Caching, 
+ * In Cloud Pro – Ultimate Enterprise High-Performance Worker (10 Bots Edition)
+ * Features: 10-Bot Round-Robin, Background Forwarding, Smart Failover, Edge Caching, 
  *           IP Rate Limiting (1000 uploads / 6 hours), Zip/Doc Support & Admin Alerts.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
 
-// জিপ (.zip) এবং অন্যান্য প্রয়োজনীয় ফাইল ফরম্যাট এখানে যুক্ত করা হলো
 const TYPES = { 
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
   mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mp3: 'audio/mpeg', m4a: 'audio/mp4',
@@ -14,16 +13,20 @@ const TYPES = {
   txt: 'text/plain', json: 'application/json'
 };
 
-// বিপজ্জনক বা ক্ষতিকর ফাইলগুলো ব্লক করা থাকবে (তবে zip, rar, 7z এখন এলাও করা হলো)
 const BLOCKED_EXTENSIONS = ['exe', 'bat', 'cmd', 'scr', 'js', 'php', 'sh', 'jar'];
 
-// আপনার ৫টি টেলিগ্রাম বট টোকেন
+// আপনার পুরোনো ৫টি এবং নতুন ৫টি—মোট ১০টি টেলিগ্রাম বট টোকেন
 const BOT_TOKENS = [
-  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1
-  '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2
-  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3
-  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4
-  '9003459592:AAFIAVc4jMQhn_MYtvl5dQkAORcI73GLyFc'  // Bot 5
+  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1 (Old)
+  '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2 (Old)
+  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3 (Old)
+  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4 (Old)
+  '9003459592:AAFIAVc4jMQhn_MYtvl5dQkAORcI73GLyFc', // Bot 5 (Old)
+  '9152119095:AAF9WLNRsoUPLJi8DkaeTy7gAHOikRGOAE', // Bot 6 (New - In_cloud_photo_5bot)[span_0](start_span)[span_0](end_span)
+  '9077197962:AAF930vM4ZPxvO_5DIO_8XKoAPM8VoRYwLs', // Bot 7 (New - In_cloud_photo_6bot)[span_1](start_span)[span_1](end_span)
+  '9218770739:AAF2C-0A-vZyOFE_WdtbaU8gLgKyxVgockk', // Bot 8 (New - In_cloud_photo_7bot)[span_2](start_span)[span_2](end_span)
+  '9171632972:AAGjEqcjxApfYrJzLKZgPb0-y1Tv2pUYB9k', // Bot 9 (New - In_cloud_pros_bot)[span_3](start_span)[span_3](end_span)
+  '9158369160:AAEEv_fCQ3Rx90029Dl-tW_2C7M5ycBwt8M'  // Bot 10 (New - In cloud pro 9)[span_4](start_span)[span_4](end_span)
 ];
 
 let roundRobinIndex = 0;
@@ -33,7 +36,6 @@ function getNextPrimaryBot() {
   return token;
 }
 
-// ইন-মেমোরি রেট লিমিট স্টোরেজ (১০০০ আপলোড / ৬ ঘণ্টা)
 const rateLimitMap = new Map();
 const MAX_UPLOADS = 1000;
 const TIME_WINDOW = 6 * 60 * 60 * 1000; 
@@ -137,7 +139,6 @@ async function handleSend(request, env, ctx, url) {
   const file = inc.get(field);
   if (!file || typeof file === 'string') return json({ ok: false, description: 'No file received' }, 400);
 
-  // ফাইল এক্সটেনশন সিকিউরিটি চেক (এখন .zip, .rar, .7z এলাও করা হয়েছে)
   const fileName = (file.name || '').toLowerCase();
   const fileExt = fileName.split('.').pop();
   if (BLOCKED_EXTENSIONS.includes(fileExt)) {
@@ -264,4 +265,4 @@ export default {
     }
   },
 };
-       
+    
