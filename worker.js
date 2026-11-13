@@ -1,7 +1,7 @@
 /**
- * In Cloud Pro – Ultimate Enterprise High-Performance Worker (10 Bots Edition)
- * Features: True Random 10-Bot Load Balancing, Instant Edge Caching, Background Forwarding, 
- *           IP Rate Limiting (1000 uploads / 6 hours), Zip/Doc Support & Admin Alerts.
+ * In Cloud Pro – Ultimate Enterprise High-Performance Worker (10 Bots & Dual Chat Edition)
+ * Features: Dual Chat 50-50 Load Balancing, Background Mirror Backup, Instant Edge Caching, 
+ *           IP Rate Limiting (1000 uploads / 6 hours), Security Filters & Admin Alerts.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
 
@@ -15,25 +15,23 @@ const TYPES = {
 
 const BLOCKED_EXTENSIONS = ['exe', 'bat', 'cmd', 'scr', 'js', 'php', 'sh', 'jar'];
 
-// ১০টি টেলিগ্রাম বট টোকেন (নিখুঁত লোড ডিস্ট্রিবিউশনের জন্য)
-const BOT_TOKENS = [
-  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1
-  '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2
-  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3
-  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4
-  '9003459592:AAFIAVc4jMQhn_MYtvl5dQkAORcI73GLyFc', // Bot 5
-  '9152119095:AAF9WLNRsoUPLJi8DkaeTy7gAHOikRGOAE', // Bot 6[span_0](start_span)[span_0](end_span)
-  '9077197962:AAF930vM4ZPxvO_5DIO_8XKoAPM8VoRYwLs', // Bot 7[span_1](start_span)[span_1](end_span)
-  '9218770739:AAF2C-0A-vZyOFE_WdtbaU8gLgKyxVgockk', // Bot 8[span_2](start_span)[span_2](end_span)
-  '9171632972:AAGjEqcjxApfYrJzLKZgPb0-y1Tv2pUYB9k', // Bot 9[span_3](start_span)[span_3](end_span)
-  '9158369160:AAEEv_fCQ3Rx90029Dl-tW_2C7M5ycBwt8M'  // Bot 10[span_4](start_span)[span_4](end_span)
-];
+// দুটি চ্যাট আইডি
+const CHAT_ID_1 = "6915123052";
+const CHAT_ID_2 = "9244007722";
 
-// পারফেক্ট লোড ব্যালেন্সার: ১০টি বটের ভেতর থেকে র্যান্ডমলি বট বেছে নেবে যাতে কেউ বসে না থাকে
-function getNextPrimaryBot() {
-  const randomIndex = Math.floor(Math.random() * BOT_TOKENS.length);
-  return BOT_TOKENS[randomIndex];
-}
+// ১০টি টেলিগ্রাম বট টোকেন (প্রথম ৫টি চ্যাট ১ এর জন্য, পরের ৫টি চ্যাট ২ এর জন্য)
+const BOT_TOKENS = [
+  '9220212334:AAHS_ro1arDHsbGrFgwxhcukmrAxNkntAK0', // Bot 1 (Chat 1)
+  '9009329678:AAF_9km1mNn3eHeoRuK7tME1AtamexvCW9Y', // Bot 2 (Chat 1)
+  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 3 (Chat 1)
+  '9000032855:AAFQATa3LR3lpUEjE6Fp1DNIVt1thAv7c4g', // Bot 4 (Chat 1)
+  '9003459592:AAFIAVc4jMQhn_MYtvl5dQkAORcI73GLyFc', // Bot 5 (Chat 1)
+  '9152119095:AAF9WLNRsoUPLJi8DkaeTy7gAHOikRGOAE', // Bot 6 (Chat 2)
+  '9077197962:AAF930vM4ZPxvO_5DIO_8XKoAPM8VoRYwLs', // Bot 7 (Chat 2)
+  '9218770739:AAF2C-0A-vZyOFE_WdtbaU8gLgKyxVgockk', // Bot 8 (Chat 2)
+  '9171632972:AAGjEqcjxApfYrJzLKZgPb0-y1Tv2pUYB9k', // Bot 9 (Chat 2)
+  '9158369160:AAEEv_fCQ3Rx90029Dl-tW_2C7M5ycBwt8M'  // Bot 10 (Chat 2)
+];
 
 const rateLimitMap = new Map();
 const MAX_UPLOADS = 1000;
@@ -93,32 +91,6 @@ async function authorized(request, env) {
   } catch (e) { return false; }
 }
 
-async function sendToSingleBotWithFailover(tokens, ep, form) {
-  let result = null;
-  for (let i = 0; i < tokens.length; i++) {
-    const currentToken = getNextPrimaryBot();
-    const url = `https://api.telegram.org/bot${currentToken}/${ep}`;
-    try {
-      let r = await fetch(url, { method: 'POST', body: form });
-      let j = await r.json();
-      
-      if (j && j.error_code === 429) {
-        const wait = Math.min(5, (j.parameters && j.parameters.retry_after) || 2);
-        await new Promise(res => setTimeout(res, wait * 1000));
-        continue;
-      }
-      
-      if (j && j.ok) {
-        return { token: currentToken, result: j };
-      }
-      result = j;
-    } catch (e) {
-      continue;
-    }
-  }
-  return { token: tokens[0], result: result || { ok: false, description: 'All bots failed' } };
-}
-
 async function handleSend(request, env, ctx, url) {
   if (!(await authorized(request, env))) return json({ ok: false, description: 'Unauthorized (401)' }, 401);
 
@@ -145,43 +117,64 @@ async function handleSend(request, env, ctx, url) {
   }
 
   const cap = inc.get('caption');
+  const fileIndex = parseInt(inc.get('index') || "0"); // ক্লায়েন্ট থেকে আসা ছবির সিরিয়াল/ইনডেক্স
+
+  // **৫০-৫০ লোড শেয়ারিং লজিক (Dual Chat Sharding)**
+  let targetChatId, botGroup;
+  if (fileIndex % 2 === 0) {
+    targetChatId = CHAT_ID_1;
+    botGroup = [0, 1, 2, 3, 4]; // প্রথম ৫টি বট (চ্যাট ১ এর জন্য)
+  } else {
+    targetChatId = CHAT_ID_2;
+    botGroup = [5, 6, 7, 8, 9]; // পরের ৫টি বট (চ্যাট ২ এর জন্য)
+  }
+
+  // নির্ধারিত গ্রুপ থেকে র্যান্ডমলি একটি বট সিলেক্ট করা
+  const randomBotIdx = botGroup[Math.floor(Math.random() * botGroup.length)];
+  const primaryToken = BOT_TOKENS[randomBotIdx];
 
   const primaryForm = new FormData();
-  primaryForm.append('chat_id', env.CHAT_ID);
+  primaryForm.append('chat_id', targetChatId);
   primaryForm.append(field, file, file.name || 'upload');
   if (cap) primaryForm.append('caption', String(cap).slice(0, 1000));
 
-  const uploadResponse = await sendToSingleBotWithFailover(BOT_TOKENS, ep, primaryForm);
-  const primaryToken = uploadResponse.token;
-  const primaryResult = uploadResponse.result;
-
-  if (!primaryResult || !primaryResult.ok) {
-    ctx.waitUntil(sendAdminAlert(BOT_TOKENS[0], env.CHAT_ID, `Critical Error: All primary bot uploads failed for IP: ${clientIP}`));
-    return json(primaryResult, 500);
+  let primaryResult = null;
+  const telegramUrl = `https://api.telegram.org/bot${primaryToken}/${ep}`;
+  
+  try {
+    let r = await fetch(telegramUrl, { method: 'POST', body: primaryForm });
+    primaryResult = await r.json();
+  } catch (e) {
+    primaryResult = { ok: false, description: e.message };
   }
 
+  if (!primaryResult || !primaryResult.ok) {
+    ctx.waitUntil(sendAdminAlert(BOT_TOKENS[0], CHAT_ID_1, `Critical Error: Primary upload failed for IP: ${clientIP}`));
+    return json(primaryResult || { ok: false, description: 'Upload failed' }, 500);
+  }
+
+  // **সফল আপলোডের পর ব্যাকগ্রাউন্ড মিরর ব্যাকআপ লজিক (Background Forwarding)**
   if (primaryResult && primaryResult.ok && primaryResult.result && primaryResult.result.message_id) {
     const sentMessageId = primaryResult.result.message_id;
 
     ctx.waitUntil((async () => {
       try {
-        const forwardPromises = BOT_TOKENS.filter(token => token !== primaryToken).map(async (token) => {
-          const forwardUrl = `https://api.telegram.org/bot${token}/forwardMessage`;
-          const payload = {
-            chat_id: env.CHAT_ID,
-            from_chat_id: env.CHAT_ID,
-            message_id: sentMessageId
-          };
+        let backupChatId = (targetChatId === CHAT_ID_1) ? CHAT_ID_2 : CHAT_ID_1;
+        let backupBotGroup = (targetChatId === CHAT_ID_1) ? [5, 6, 7, 8, 9] : [0, 1, 2, 3, 4];
+        let backupToken = BOT_TOKENS[backupBotGroup[Math.floor(Math.random() * backupBotGroup.length)]];
 
-          let r = await fetch(forwardUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          return r.json();
+        const forwardUrl = `https://api.telegram.org/bot${backupToken}/forwardMessage`;
+        const payload = {
+          chat_id: backupChatId,
+          from_chat_id: targetChatId,
+          message_id: sentMessageId
+        };
+
+        await fetch(forwardUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-
-        await Promise.all(forwardPromises);
       } catch (e) {}
     })());
   }
@@ -194,12 +187,23 @@ async function handleDel(request, env, url) {
   const mid = parseInt(url.searchParams.get('mid'), 10);
   if (!mid) return json({ ok: false, description: 'Bad request' }, 400);
 
-  await Promise.all(BOT_TOKENS.map(token => 
-    fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: env.CHAT_ID, message_id: mid }),
-    }).catch(() => null)
-  ));
+  // উভয় চ্যাট আইডি এবং ১০টি বট থেকেই ফাইল ডিলিট করার রিকোয়েস্ট পাঠানো
+  const deletePromises = [];
+  for (const token of BOT_TOKENS) {
+    deletePromises.push(
+      fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHAT_ID_1, message_id: mid }),
+      }).catch(() => null)
+    );
+    deletePromises.push(
+      fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHAT_ID_2, message_id: mid }),
+      }).catch(() => null)
+    );
+  }
+  await Promise.all(deletePromises);
 
   return json({ ok: true });
 }
@@ -249,7 +253,6 @@ export default {
     
     env = { 
       ...env, 
-      CHAT_ID: env.CHAT_ID || '6915123052', 
       FIREBASE_API_KEY: env.FIREBASE_API_KEY || 'AIzaSyC6o__xNIM61kBrP7jfzMy8hKCeQc7Iv2E' 
     };
 
