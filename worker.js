@@ -15,7 +15,7 @@ const TYPES = {
 
 const BLOCKED_EXTENSIONS = ['exe', 'bat', 'cmd', 'scr', 'js', 'php', 'sh', 'jar'];
 
-// দুটি চ্যাট আইডি
+// **আপনার দুটি নির্দিষ্ট চ্যাট আইডি**
 const CHAT_ID_1 = "6915123052";
 const CHAT_ID_2 = "9244007722";
 
@@ -117,9 +117,9 @@ async function handleSend(request, env, ctx, url) {
   }
 
   const cap = inc.get('caption');
-  const fileIndex = parseInt(inc.get('index') || "0"); // ক্লায়েন্ট থেকে আসা ছবির সিরিয়াল/ইনডেক্স
+  const fileIndex = parseInt(inc.get('index') || "0"); // অ্যাপ থেকে আসা ছবির সিরিয়াল/ইনডেক্স
 
-  // **৫০-৫০ লোড শেয়ারিং লজিক (Dual Chat Sharding)**
+  // **৫০-৫০ লোড শেয়ারিং লজিক (নিখুঁতভাবে দুই চ্যাটে ভাগ করা)**
   let targetChatId, botGroup;
   if (fileIndex % 2 === 0) {
     targetChatId = CHAT_ID_1;
@@ -268,3 +268,4 @@ export default {
     }
   },
 };
+    
