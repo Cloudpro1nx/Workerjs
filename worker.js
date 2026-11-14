@@ -1,6 +1,6 @@
 /**
  * In Cloud Pro – Ultimate Enterprise High-Performance Worker (10 Bots & Dual Chat Edition)
- * Features: Dual Chat 50-50 Load Balancing, Background Mirror Backup, Instant Edge Caching, 
+ * Features: Automatic 50-50 Load Balancing, Background Mirror Backup, Instant Edge Caching, 
  *           IP Rate Limiting (1000 uploads / 6 hours), Security Filters & Admin Alerts.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
@@ -117,11 +117,11 @@ async function handleSend(request, env, ctx, url) {
   }
 
   const cap = inc.get('caption');
-  const fileIndex = parseInt(inc.get('index') || "0"); // অ্যাপ থেকে আসা ছবির সিরিয়াল/ইনডেক্স
 
-  // **৫০-৫০ লোড শেয়ারিং লজিক (নিখুঁতভাবে দুই চ্যাটে ভাগ করা)**
+  // **অটোমেটিক ৫০-৫০ লোড শেয়ারিং লজিক (সার্ভার সাইড র্যান্ডম ডিসট্রিবিউশন)**
+  // অ্যাপ থেকে কোনো ইডেক্স পাঠানোর দরকার নেই, কোড নিজেই সমান দুই ভাগে ভাগ করে নেবে
   let targetChatId, botGroup;
-  if (fileIndex % 2 === 0) {
+  if (Math.random() < 0.5) {
     targetChatId = CHAT_ID_1;
     botGroup = [0, 1, 2, 3, 4]; // প্রথম ৫টি বট (চ্যাট ১ এর জন্য)
   } else {
