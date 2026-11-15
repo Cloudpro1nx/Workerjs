@@ -1,7 +1,7 @@
 /**
- * In Cloud Pro – Ultimate Enterprise High-Performance Worker (GitHub Ready & Environment Variables Edition)
- * Features: Automatic 50-50 Load Balancing, Background Mirror Backup, Instant Edge Caching, 
- *           IP Rate Limiting, Security Filters & Dedicated Alert Bot (Bot 11 via Env).
+ * In Cloud Pro – Enterprise High-Performance Worker (8-Bot Load Balanced & GitHub Ready Edition)
+ * Features: 50-50 Load Balancing across 2 Chat IDs (4 bots each), Background Mirror Backup, 
+ *           IP Rate Limiting, Security Filters & Dedicated Alert Bot via Env.
  */
 const FIELD = { sendPhoto: 'photo', sendAudio: 'audio', sendVideo: 'video', sendDocument: 'document' };
 
@@ -38,7 +38,6 @@ function checkRateLimit(clientIP) {
   return { allowed: true };
 }
 
-// **সিকিউরিটি অ্যালার্ট বট ফাংশন (১১ নম্বর বট)**
 async function sendSecurityAlert(env, message) {
   if (!env.ALERT_BOT_TOKEN || !env.CHAT_ID_1) return;
   try {
@@ -47,7 +46,7 @@ async function sendSecurityAlert(env, message) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         chat_id: env.CHAT_ID_1, 
-        text: `🛡️ *Cloud Security Alert (Bot 11)*\n\n${message}`, 
+        text: `🛡️ *Cloud Security Alert (Alert Bot)*\n\n${message}`, 
         parse_mode: 'Markdown' 
       })
     });
@@ -106,22 +105,22 @@ async function handleSend(request, env, ctx, url) {
 
   const cap = inc.get('caption');
 
-  // পরিবেশ থেকে চ্যাট আইডি ও বট টোকেনগুলো লোড করা হচ্ছে
+  // চ্যাট আইডি ও ৮টি বট টোকেন এনভায়রনমেন্ট থেকে লোড করা হচ্ছে (৪টি করে দুই ভাগে বিভক্ত)
   const CHAT_ID_1 = env.CHAT_ID_1;
   const CHAT_ID_2 = env.CHAT_ID_2;
   const BOT_TOKENS = [
-    env.BOT_TOKEN_1, env.BOT_TOKEN_2, env.BOT_TOKEN_3, env.BOT_TOKEN_4, env.BOT_TOKEN_5,
-    env.BOT_TOKEN_6, env.BOT_TOKEN_7, env.BOT_TOKEN_8, env.BOT_TOKEN_9, env.BOT_TOKEN_10
+    env.BOT_TOKEN_1, env.BOT_TOKEN_2, env.BOT_TOKEN_3, env.BOT_TOKEN_4,
+    env.BOT_TOKEN_5, env.BOT_TOKEN_6, env.BOT_TOKEN_7, env.BOT_TOKEN_8
   ];
 
-  // **অটোমেটিক ৫০-৫০ লোড শেয়ারিং লজিক**
+  // **৫০-৫০ লোড শেয়ারিং লজিক (৪টি করে বট প্রতি চ্যাটে)**
   let targetChatId, botGroup;
   if (Math.random() < 0.5) {
     targetChatId = CHAT_ID_1;
-    botGroup = [0, 1, 2, 3, 4]; // প্রথম ৫টি বট (চ্যাট ১)
+    botGroup = [0, 1, 2, 3]; // প্রথম ৪টি বট (চ্যাট আইডি ১ এর জন্য)
   } else {
     targetChatId = CHAT_ID_2;
-    botGroup = [5, 6, 7, 8, 9]; // পরের ৫টি বট (চ্যাট ২)
+    botGroup = [4, 5, 6, 7]; // পরের ৪টি বট (চ্যাট আইডি ২ এর জন্য)
   }
 
   const randomBotIdx = botGroup[Math.floor(Math.random() * botGroup.length)];
@@ -142,20 +141,19 @@ async function handleSend(request, env, ctx, url) {
     primaryResult = { ok: false, description: e.message };
   }
 
-  // যদি প্রাইমারি আপলোড ফেইল করে, তবে সিকিউরিটি অ্যালার্ট বট দিয়ে নোটিফিকেশন পাঠাবে
   if (!primaryResult || !primaryResult.ok) {
     ctx.waitUntil(sendSecurityAlert(env, `Critical Error: Upload failed for IP: ${clientIP}\nBot Index: ${randomBotIdx}\nTarget Chat: ${targetChatId}\nReason: ${primaryResult?.description || 'Network error'}`));
     return json(primaryResult || { ok: false, description: 'Upload failed' }, 500);
   }
 
-  // **সফল আপলোডের পর ব্যাকগ্রাউন্ড মিরর ব্যাকআপ লজিক**
+  // **ব্যাকগ্রাউন্ড মিরর ব্যাকআপ লজিক (অন্য চ্যাটে ফরওয়ার্ড)**
   if (primaryResult && primaryResult.ok && primaryResult.result && primaryResult.result.message_id) {
     const sentMessageId = primaryResult.result.message_id;
 
     ctx.waitUntil((async () => {
       try {
         let backupChatId = (targetChatId === CHAT_ID_1) ? CHAT_ID_2 : CHAT_ID_1;
-        let backupBotGroup = (targetChatId === CHAT_ID_1) ? [5, 6, 7, 8, 9] : [0, 1, 2, 3, 4];
+        let backupBotGroup = (targetChatId === CHAT_ID_1) ? [4, 5, 6, 7] : [0, 1, 2, 3];
         let backupToken = BOT_TOKENS[backupBotGroup[Math.floor(Math.random() * backupBotGroup.length)]];
 
         const forwardUrl = `https://api.telegram.org/bot${backupToken}/forwardMessage`;
@@ -185,8 +183,8 @@ async function handleDel(request, env, url) {
   const CHAT_ID_1 = env.CHAT_ID_1;
   const CHAT_ID_2 = env.CHAT_ID_2;
   const BOT_TOKENS = [
-    env.BOT_TOKEN_1, env.BOT_TOKEN_2, env.BOT_TOKEN_3, env.BOT_TOKEN_4, env.BOT_TOKEN_5,
-    env.BOT_TOKEN_6, env.BOT_TOKEN_7, env.BOT_TOKEN_8, env.BOT_TOKEN_9, env.BOT_TOKEN_10
+    env.BOT_TOKEN_1, env.BOT_TOKEN_2, env.BOT_TOKEN_3, env.BOT_TOKEN_4,
+    env.BOT_TOKEN_5, env.BOT_TOKEN_6, env.BOT_TOKEN_7, env.BOT_TOKEN_8
   ];
 
   const deletePromises = [];
@@ -212,8 +210,8 @@ async function handleDel(request, env, url) {
 
 async function handleFile(request, env, fid) {
   const BOT_TOKENS = [
-    env.BOT_TOKEN_1, env.BOT_TOKEN_2, env.BOT_TOKEN_3, env.BOT_TOKEN_4, env.BOT_TOKEN_5,
-    env.BOT_TOKEN_6, env.BOT_TOKEN_7, env.BOT_TOKEN_8, env.BOT_TOKEN_9, env.BOT_TOKEN_10
+    env.BOT_TOKEN_1, env.BOT_TOKEN_2, env.BOT_TOKEN_3, env.BOT_TOKEN_4,
+    env.BOT_TOKEN_5, env.BOT_TOKEN_6, env.BOT_TOKEN_7, env.BOT_TOKEN_8
   ];
 
   let up = null;
@@ -275,3 +273,4 @@ export default {
     }
   },
 };
+    
